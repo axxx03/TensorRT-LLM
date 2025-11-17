@@ -157,6 +157,7 @@ class Scheduler(SchedulerInterface):
         # KV Connector: requests in process of async KV loading or recving
         self.finished_recving_kv_req_ids: set[str] = set()
         self.failed_recving_kv_req_ids: set[str] = set()
+        self.sending_kv_reqs: dict[str, Request] = {}
 
         # Encoder-related.
         # Calculate encoder cache size if applicable
@@ -1366,7 +1367,8 @@ class Scheduler(SchedulerInterface):
 
         if not delay_free_blocks:
             self._free_blocks(request)
-
+        else:
+            self.sending_kv_reqs[request.request_id] = request
         return kv_xfer_params
 
     def _free_blocks(self, request: Request):
@@ -1378,7 +1380,7 @@ class Scheduler(SchedulerInterface):
         return len(self.waiting) + len(self.running)
 
     def has_finished_requests(self) -> bool:
-        return len(self.finished_req_ids) > 0
+        return len(self.finished_req_ids) > 0 or len(self.sending_kv_reqs) > 0
 
     def reset_prefix_cache(self, reset_running_requests: bool = False) -> bool:
         """Reset the KV prefix cache.
@@ -1578,6 +1580,10 @@ class Scheduler(SchedulerInterface):
             schedule the request during the next step.
         """
 
+        # avoid busy checking
+        if len(self.running) == 0:
+            time.sleep(0.01)
+
         if self.connector is not None:
             self.connector.update_connector_output(kv_connector_output)
 
@@ -1588,6 +1594,7 @@ class Scheduler(SchedulerInterface):
         for req_id in kv_connector_output.finished_sending or ():
             logger.debug("Finished sending KV transfer for request %s", req_id)
             assert req_id in self.requests
+            del self.sending_kv_reqs[req_id]
             self._free_blocks(self.requests[req_id])
 
     def _update_requests_with_invalid_blocks(
