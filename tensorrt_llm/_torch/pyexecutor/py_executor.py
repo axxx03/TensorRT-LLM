@@ -527,6 +527,8 @@ class PyExecutor:
                     module.register_forward_hook(
                         self.kv_connector_manager.layer_post_hook)
 
+            self.kv_connector_manager.wait_for_initialization()
+
     def _end_transfer_and_maybe_terminate(self, request: LlmRequest):
         if self.async_transfer_manager.end_transfer(request):
             self._terminate_request(request)
@@ -1499,7 +1501,6 @@ class PyExecutor:
         if self.kv_connector_manager:
             self.kv_connector_manager.take_scheduled_requests_pending_load(
                 scheduled_batch)
-            self.kv_connector_manager.handle_metadata()
             self.kv_connector_manager.worker.start_load_kv(
                 torch.cuda.current_stream())
 
@@ -1538,6 +1539,9 @@ class PyExecutor:
                 self._pause_requests(scheduled_batch.paused_requests)
 
                 finished_requests = []
+
+                if self.kv_connector_manager:
+                    self.kv_connector_manager.handle_metadata()
 
                 can_queue, _ = self._can_queue(scheduled_batch)
                 if can_queue:
@@ -1755,6 +1759,9 @@ class PyExecutor:
                             can_forward = True
 
                 self._terminate_requests(scheduled_batch.paused_requests)
+
+                if self.kv_connector_manager:
+                    self.kv_connector_manager.handle_metadata()
 
                 can_queue, can_queue_this_rank = self._can_queue(
                     scheduled_batch)
@@ -3008,6 +3015,9 @@ class PyExecutor:
                 else:
                     if not request.is_disagg_context_transmission_state:
                         requests_to_terminate.append(request)
+
+                if self.kv_connector_manager is not None:
+                    self.resource_manager.free_slot_only(request)
             else:
                 new_active_requests.append(request)
 

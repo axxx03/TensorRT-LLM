@@ -1696,6 +1696,15 @@ public:
     {
         return std::all_of(mFinishReasons.begin(), mFinishReasons.end(),
             [](auto reason) { return reason == executor::FinishReason::kCANCELLED; });
+
+    [[nodiscard]] bool isFinishedWithoutError() const noexcept
+    {
+        return std::all_of(mFinishReasons.begin(), mFinishReasons.end(),
+            [](auto reason)
+            {
+                return reason == executor::FinishReason::kEND_ID || reason == executor::FinishReason::kSTOP_WORDS
+                    || reason == executor::FinishReason::kLENGTH;
+            });
     }
 
     [[nodiscard]] bool isTimedOut() const
